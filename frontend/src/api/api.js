@@ -2,8 +2,8 @@ const BASE_URL = `${import.meta.env.VITE_API_BASE_URL || ""}/api`;
 
 async function request(path, options = {}) {
   const response = await fetch(`${BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
     ...options,
+    headers: { "Content-Type": "application/json", ...options.headers },
   });
 
   if (!response.ok) {
@@ -67,4 +67,37 @@ export function searchCities(query, countryCode, signal) {
 export function searchHotels({ city, country, lat, lon }, signal) {
   const params = new URLSearchParams({ city, country: country || "", lat, lon });
   return request(`/hotels/search?${params.toString()}`, { signal });
+}
+
+export function searchAirports(lat, lon, signal) {
+  const params = new URLSearchParams({ lat, lon });
+  return request(`/airports/search?${params.toString()}`, { signal });
+}
+
+export function signUp(email, password, name) {
+  return request("/auth/signup", {
+    method: "POST",
+    body: JSON.stringify({ email, password, name }),
+  });
+}
+
+export function signIn(email, password) {
+  return request("/auth/signin", {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function saveTrip(token, payload) {
+  return request("/trips", {
+    method: "POST",
+    body: JSON.stringify(payload),
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+
+export function listMyTrips(token) {
+  return request("/trips", {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 }

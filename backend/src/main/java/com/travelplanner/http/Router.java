@@ -5,6 +5,7 @@ import com.sun.net.httpserver.HttpHandler;
 import com.travelplanner.dto.response.ApiErrorDto;
 import com.travelplanner.exception.BadRequestException;
 import com.travelplanner.exception.NotFoundException;
+import com.travelplanner.exception.UnauthorizedException;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -91,7 +92,9 @@ public class Router implements HttpHandler {
             ctx.sendJson(404, new ApiErrorDto("NOT_FOUND", e.getMessage()));
         } catch (BadRequestException e) {
             ctx.sendJson(400, new ApiErrorDto("BAD_REQUEST", e.getMessage()));
-        } catch (Exception e) {
+        } catch (UnauthorizedException e) {
+            ctx.sendJson(401, new ApiErrorDto("UNAUTHORIZED", e.getMessage()));
+        } catch (Throwable e) {
             e.printStackTrace();
             ctx.sendJson(500, new ApiErrorDto("INTERNAL_ERROR", "Something went wrong processing the request"));
         }

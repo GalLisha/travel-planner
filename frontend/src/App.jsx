@@ -6,7 +6,9 @@ import StepDestination from "./components/wizard/steps/StepDestination.jsx";
 import StepFlightHotel from "./components/wizard/steps/StepFlightHotel.jsx";
 import UnsupportedScenario from "./components/wizard/steps/UnsupportedScenario.jsx";
 import ItineraryView from "./components/itinerary/ItineraryView.jsx";
+import MyTripsView from "./components/itinerary/MyTripsView.jsx";
 import WizardLayout from "./components/wizard/WizardLayout.jsx";
+import AuthBar from "./components/shared/AuthBar.jsx";
 
 function Screens() {
   const { view } = useWizardState();
@@ -17,6 +19,10 @@ function Screens() {
 
   if (view === "itinerary") {
     return <ItineraryView />;
+  }
+
+  if (view === "myTrips") {
+    return <MyTripsView />;
   }
 
   const steps = ["group", "destination", "flightHotel", "unsupported"];
@@ -35,6 +41,7 @@ function Screens() {
 export default function App() {
   return (
     <WizardProvider>
+      <AuthBar />
       <Screens />
     </WizardProvider>
   );

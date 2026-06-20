@@ -31,6 +31,10 @@ public class RequestContext {
         return queryParams.get(name);
     }
 
+    public String header(String name) {
+        return exchange.getRequestHeaders().getFirst(name);
+    }
+
     public <T> T bodyAs(Class<T> type) throws IOException {
         try (InputStreamReader reader = new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8)) {
             T value = JsonUtil.GSON.fromJson(reader, type);
