@@ -8,6 +8,12 @@ services:
     envVars:
       - key: PORT
         value: 8080
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: GOOGLE_PLACES_API_KEY
+        sync: false
 
   - name: vacation-planner-frontend
     type: web
