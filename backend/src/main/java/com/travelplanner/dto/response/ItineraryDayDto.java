@@ -11,6 +11,8 @@ public class ItineraryDayDto {
     private List<ItineraryItemDto> items;
     private double totalDistanceKm;
     private int totalTravelTimeMinutes;
+    private TransferLegDto arrivalTransfer;
+    private TransferLegDto departureTransfer;
 
     public static ItineraryDayDto fromModel(ItineraryDay day) {
         ItineraryDayDto dto = new ItineraryDayDto();
@@ -19,6 +21,8 @@ public class ItineraryDayDto {
         dto.items = day.getItems().stream().map(ItineraryItemDto::fromModel).collect(Collectors.toList());
         dto.totalDistanceKm = Math.round(day.getTotalDistanceKm() * 10.0) / 10.0;
         dto.totalTravelTimeMinutes = day.getTotalTravelTimeMinutes();
+        dto.arrivalTransfer = TransferLegDto.fromModel(day.getArrivalTransfer());
+        dto.departureTransfer = TransferLegDto.fromModel(day.getDepartureTransfer());
         return dto;
     }
 
@@ -40,5 +44,13 @@ public class ItineraryDayDto {
 
     public int getTotalTravelTimeMinutes() {
         return totalTravelTimeMinutes;
+    }
+
+    public TransferLegDto getArrivalTransfer() {
+        return arrivalTransfer;
+    }
+
+    public TransferLegDto getDepartureTransfer() {
+        return departureTransfer;
     }
 }

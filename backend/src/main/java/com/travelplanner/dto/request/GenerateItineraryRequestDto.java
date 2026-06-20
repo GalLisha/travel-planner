@@ -19,6 +19,16 @@ public class GenerateItineraryRequestDto {
     private Double latitude;
     private Double longitude;
 
+    // Arrival airport + real flight times, all optional. When present, the first/last
+    // day's schedule is anchored to the actual flight times (plus a transfer leg) instead
+    // of the generic hardcoded arrival/departure windows.
+    private String arrivalAirportName;
+    private Double arrivalAirportLatitude;
+    private Double arrivalAirportLongitude;
+    private String arrivalTime;
+    private String departureTime;
+    private String transferMode;
+
     public String getDestinationId() {
         return destinationId;
     }
@@ -113,5 +123,53 @@ public class GenerateItineraryRequestDto {
 
     public void setLongitude(Double longitude) {
         this.longitude = longitude;
+    }
+
+    public String getArrivalAirportName() {
+        return arrivalAirportName;
+    }
+
+    public void setArrivalAirportName(String arrivalAirportName) {
+        this.arrivalAirportName = arrivalAirportName;
+    }
+
+    public Double getArrivalAirportLatitude() {
+        return arrivalAirportLatitude;
+    }
+
+    public void setArrivalAirportLatitude(Double arrivalAirportLatitude) {
+        this.arrivalAirportLatitude = arrivalAirportLatitude;
+    }
+
+    public Double getArrivalAirportLongitude() {
+        return arrivalAirportLongitude;
+    }
+
+    public void setArrivalAirportLongitude(Double arrivalAirportLongitude) {
+        this.arrivalAirportLongitude = arrivalAirportLongitude;
+    }
+
+    public String getArrivalTime() {
+        return arrivalTime;
+    }
+
+    public void setArrivalTime(String arrivalTime) {
+        this.arrivalTime = arrivalTime;
+    }
+
+    public String getDepartureTime() {
+        return departureTime;
+    }
+
+    public void setDepartureTime(String departureTime) {
+        this.departureTime = departureTime;
+    }
+
+    public String getTransferMode() {
+        return transferMode;
+    }
+
+    public void setTransferMode(String transferMode) {
+        this.transferMode = transferMode;
     }
 }

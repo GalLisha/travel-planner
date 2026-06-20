@@ -9,6 +9,8 @@ public class ItineraryDay {
     private List<ItineraryItem> items = new ArrayList<>();
     private double totalDistanceKm;
     private int totalTravelTimeMinutes;
+    private TransferLeg arrivalTransfer;
+    private TransferLeg departureTransfer;
 
     public ItineraryDay() {
     }
@@ -51,5 +53,21 @@ public class ItineraryDay {
 
     public void setTotalTravelTimeMinutes(int totalTravelTimeMinutes) {
         this.totalTravelTimeMinutes = totalTravelTimeMinutes;
+    }
+
+    public TransferLeg getArrivalTransfer() {
+        return arrivalTransfer;
+    }
+
+    public void setArrivalTransfer(TransferLeg arrivalTransfer) {
+        this.arrivalTransfer = arrivalTransfer;
+    }
+
+    public TransferLeg getDepartureTransfer() {
+        return departureTransfer;
+    }
+
+    public void setDepartureTransfer(TransferLeg departureTransfer) {
+        this.departureTransfer = departureTransfer;
     }
 }

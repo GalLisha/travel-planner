@@ -11,12 +11,14 @@ import com.travelplanner.model.GeoPoint;
 import com.travelplanner.model.Itinerary;
 import com.travelplanner.model.ItineraryDay;
 import com.travelplanner.model.ItineraryItem;
+import com.travelplanner.model.TransferLeg;
 import com.travelplanner.model.TravelGroupType;
 import com.travelplanner.repository.AttractionRepository;
 import com.travelplanner.repository.DestinationRepository;
 import com.travelplanner.repository.ItineraryRepository;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.format.DateTimeParseException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
@@ -81,6 +83,41 @@ public class ItineraryService {
         // which naturally produces a trip of "free days" below rather than failing.
         List<Attraction> pool = rankedAttractionsFor(destination.getId(), groupType);
 
+        // Real flight times + an arrival airport let day 1/the last day be anchored to the
+        // actual flight schedule (plus a calculated transfer leg) instead of the generic
+        // hardcoded windows below; absent that info, behavior is unchanged from before.
+        GeoPoint airportLocation = (request.getArrivalAirportLatitude() != null && request.getArrivalAirportLongitude() != null)
+                ? new GeoPoint(request.getArrivalAirportLatitude(), request.getArrivalAirportLongitude())
+                : null;
+        String transferMode = request.getTransferMode() != null ? request.getTransferMode().trim().toUpperCase(Locale.ROOT) : "TAXI";
+        String airportLabel = request.getArrivalAirportName() != null ? request.getArrivalAirportName() : "Airport";
+        String hotelLabel = request.getHotelName() != null ? request.getHotelName() : "Hotel";
+
+        Integer day1StartOverride = null;
+        TransferLeg arrivalTransferLeg = null;
+        Integer lastDayEndCutoffOverride = null;
+        TransferLeg departureTransferLeg = null;
+
+        if (airportLocation != null) {
+            double transferDistance = routeOptimizationService.distanceKm(airportLocation, hotelLocation);
+            int transferMinutes = routeOptimizationService.airportTransferTimeMinutes(transferDistance, transferMode);
+
+            Integer flightArrivalMinutes = parseTimeToMinutes(request.getArrivalTime(), "arrivalTime");
+            if (flightArrivalMinutes != null) {
+                day1StartOverride = flightArrivalMinutes + transferMinutes;
+                arrivalTransferLeg = buildTransferLeg(airportLabel, hotelLabel, transferMode, transferDistance,
+                        transferMinutes, flightArrivalMinutes, day1StartOverride);
+            }
+
+            Integer flightDepartureMinutes = parseTimeToMinutes(request.getDepartureTime(), "departureTime");
+            if (flightDepartureMinutes != null) {
+                int mustArriveAtAirportBy = flightDepartureMinutes - RouteOptimizationService.AIRPORT_CHECKIN_BUFFER_MINUTES;
+                lastDayEndCutoffOverride = mustArriveAtAirportBy - transferMinutes;
+                departureTransferLeg = buildTransferLeg(hotelLabel, airportLabel, transferMode, transferDistance,
+                        transferMinutes, lastDayEndCutoffOverride, mustArriveAtAirportBy);
+            }
+        }
+
         Itinerary itinerary = new Itinerary();
         itinerary.setId(UUID.randomUUID().toString());
         itinerary.setDestinationId(destination.getId());
@@ -96,14 +133,22 @@ public class ItineraryService {
         for (int dayNumber = 1; dayNumber <= totalDays; dayNumber++) {
             boolean isFirstDay = dayNumber == 1;
             boolean isLastDay = dayNumber == totalDays;
-            int startMinutes = isFirstDay ? ARRIVAL_DAY_START_MINUTES : DAY_START_MINUTES;
-            int endCutoff = isLastDay ? DEPARTURE_DAY_END_MINUTES : DAY_END_MINUTES;
+            int startMinutes = isFirstDay && day1StartOverride != null ? day1StartOverride
+                    : isFirstDay ? ARRIVAL_DAY_START_MINUTES : DAY_START_MINUTES;
+            int endCutoff = isLastDay && lastDayEndCutoffOverride != null ? lastDayEndCutoffOverride
+                    : isLastDay ? DEPARTURE_DAY_END_MINUTES : DAY_END_MINUTES;
 
             List<Attraction> dayAttractions = fillDayWithinBudget(pool, poolIndex, hotelLocation, startMinutes, endCutoff);
             poolIndex += dayAttractions.size();
 
             ItineraryDay day = buildDay(dayNumber, departureDate.plusDays(dayNumber - 1), dayAttractions,
-                    hotelLocation, isFirstDay);
+                    hotelLocation, startMinutes);
+            if (isFirstDay) {
+                day.setArrivalTransfer(arrivalTransferLeg);
+            }
+            if (isLastDay) {
+                day.setDepartureTransfer(departureTransferLeg);
+            }
             days.add(day);
         }
         itinerary.setDays(days);
@@ -172,8 +217,13 @@ public class ItineraryService {
         }
 
         boolean isFirstDay = day.getDayNumber() == 1;
+        int startMinutes = isFirstDay && day.getArrivalTransfer() != null
+                ? parseTimeToMinutes(day.getArrivalTransfer().getArrivalTime(), "arrivalTime")
+                : isFirstDay ? ARRIVAL_DAY_START_MINUTES : DAY_START_MINUTES;
         ItineraryDay rebuilt = buildDay(day.getDayNumber(), LocalDate.parse(itinerary.getDepartureDate())
-                .plusDays(day.getDayNumber() - 1), dayAttractions, itinerary.getHotelLocation(), isFirstDay);
+                .plusDays(day.getDayNumber() - 1), dayAttractions, itinerary.getHotelLocation(), startMinutes);
+        rebuilt.setArrivalTransfer(day.getArrivalTransfer());
+        rebuilt.setDepartureTransfer(day.getDepartureTransfer());
 
         int index = itinerary.getDays().indexOf(day);
         itinerary.getDays().set(index, rebuilt);
@@ -254,14 +304,14 @@ public class ItineraryService {
     }
 
     private ItineraryDay buildDay(int dayNumber, LocalDate date, List<Attraction> dayAttractions,
-                                   GeoPoint hotelLocation, boolean isFirstDay) {
+                                   GeoPoint hotelLocation, int startMinutes) {
         List<Attraction> ordered = routeOptimizationService.optimizeOrder(hotelLocation, dayAttractions);
 
         ItineraryDay day = new ItineraryDay();
         day.setDayNumber(dayNumber);
         day.setDate(date.toString());
 
-        int currentMinutes = isFirstDay ? ARRIVAL_DAY_START_MINUTES : DAY_START_MINUTES;
+        int currentMinutes = startMinutes;
         GeoPoint previousLocation = hotelLocation;
         double totalDistance = 0;
         int totalTravelTime = 0;
@@ -343,6 +393,32 @@ public class ItineraryService {
     private static String formatTime(int minutesFromMidnight) {
         int wrapped = minutesFromMidnight % (24 * 60);
         return String.format(Locale.ROOT, "%02d:%02d", wrapped / 60, wrapped % 60);
+    }
+
+    private TransferLeg buildTransferLeg(String fromLabel, String toLabel, String mode, double distanceKm,
+                                          int travelTimeMinutes, int departureMinutes, int arrivalMinutes) {
+        TransferLeg leg = new TransferLeg();
+        leg.setFromLabel(fromLabel);
+        leg.setToLabel(toLabel);
+        leg.setMode(mode);
+        leg.setDistanceKm(distanceKm);
+        leg.setTravelTimeMinutes(travelTimeMinutes);
+        leg.setDepartureTime(formatTime(departureMinutes));
+        leg.setArrivalTime(formatTime(arrivalMinutes));
+        return leg;
+    }
+
+    /** Parses an optional "HH:mm" field to minutes-from-midnight; null/blank input returns null. */
+    private static Integer parseTimeToMinutes(String value, String field) {
+        if (value == null || value.trim().isEmpty()) {
+            return null;
+        }
+        try {
+            LocalTime time = LocalTime.parse(value.trim());
+            return time.getHour() * 60 + time.getMinute();
+        } catch (DateTimeParseException ex) {
+            throw new BadRequestException(field + " must be in HH:mm format");
+        }
     }
 
     private static TravelGroupType parseGroupType(String value) {

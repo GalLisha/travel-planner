@@ -19,6 +19,15 @@ public class RouteOptimizationService {
     private static final double WALK_SPEED_KMH = 4.5;
     private static final double DRIVE_SPEED_KMH = 28.0;
 
+    // Airport transfers cover much longer distances than in-city hops, mostly on
+    // highways, so they get their own (faster) speed model plus a fixed overhead for
+    // pickup/boarding - a taxi leaves close to immediately, a bus involves waiting and stops.
+    private static final double TAXI_SPEED_KMH = 55.0;
+    private static final int TAXI_OVERHEAD_MINUTES = 10;
+    private static final double BUS_SPEED_KMH = 32.0;
+    private static final int BUS_OVERHEAD_MINUTES = 20;
+    public static final int AIRPORT_CHECKIN_BUFFER_MINUTES = 60;
+
     /** Great-circle distance between two points, in kilometers. */
     public double distanceKm(GeoPoint a, GeoPoint b) {
         double lat1 = Math.toRadians(a.getLatitude());
@@ -43,6 +52,14 @@ public class RouteOptimizationService {
         double hours = distanceKm / speed;
         int minutes = (int) Math.ceil(hours * 60) + (distanceKm <= WALK_THRESHOLD_KM ? 0 : 5);
         return Math.max(minutes, 5);
+    }
+
+    /** Estimated airport<->hotel transfer time in whole minutes, including a fixed pickup/wait overhead. */
+    public int airportTransferTimeMinutes(double distanceKm, String transferMode) {
+        boolean isBus = "BUS".equalsIgnoreCase(transferMode);
+        double speed = isBus ? BUS_SPEED_KMH : TAXI_SPEED_KMH;
+        int overhead = isBus ? BUS_OVERHEAD_MINUTES : TAXI_OVERHEAD_MINUTES;
+        return (int) Math.ceil(distanceKm / speed * 60) + overhead;
     }
 
     /**

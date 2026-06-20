@@ -1,7 +1,27 @@
 import React, { useState } from "react";
-import { MapPin, Footprints, Car, Navigation } from "lucide-react";
+import { MapPin, Footprints, Car, Bus, Navigation } from "lucide-react";
 import AttractionCard from "./AttractionCard.jsx";
 import ReplaceAttractionModal from "./ReplaceAttractionModal.jsx";
+
+function TransferLegRow({ leg }) {
+  const Icon = leg.mode === "BUS" ? Bus : Car;
+  return (
+    <div className="transfer-leg">
+      <div className="transfer-leg__icon">
+        <Icon size={16} />
+      </div>
+      <div className="transfer-leg__body">
+        <div className="transfer-leg__route">
+          {leg.fromLabel} &rarr; {leg.toLabel}
+        </div>
+        <div className="transfer-leg__meta">
+          <span>{leg.departureTime} &ndash; {leg.arrivalTime}</span>
+          <span>{leg.travelTimeMinutes} min &middot; {leg.distanceKm} km &middot; {leg.mode === "BUS" ? "Bus" : "Taxi"}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function DayCard({ day, itineraryId }) {
   const [replacing, setReplacing] = useState(null);
@@ -23,6 +43,8 @@ export default function DayCard({ day, itineraryId }) {
           )}
         </div>
       </div>
+
+      {day.arrivalTransfer && <TransferLegRow leg={day.arrivalTransfer} />}
 
       {day.items.length === 0 ? (
         <p className="day-card__empty">
@@ -48,6 +70,8 @@ export default function DayCard({ day, itineraryId }) {
           ))}
         </div>
       )}
+
+      {day.departureTransfer && <TransferLegRow leg={day.departureTransfer} />}
 
       {replacing && (
         <ReplaceAttractionModal

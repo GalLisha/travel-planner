@@ -1,9 +1,11 @@
 import React, { useState } from "react";
-import { MapPin, Sparkles, ArrowLeft, Info } from "lucide-react";
+import { MapPin, Sparkles, ArrowLeft, Info, ListChecks, PenLine } from "lucide-react";
 import { useWizardDispatch } from "../../../context/WizardContext.jsx";
 import { suggestDestinations } from "../../../api/api.js";
 import DestinationGrid from "../../shared/DestinationGrid.jsx";
 import CitySearch from "../../shared/CitySearch.jsx";
+import CountrySelect from "../../shared/CountrySelect.jsx";
+import AirportSelect from "../../shared/AirportSelect.jsx";
 import { COUNTRIES } from "../../../data/countries.js";
 import { label } from "../../../utils/format.js";
 
@@ -18,7 +20,9 @@ export default function StepDestination() {
   const [countryFilter, setCountryFilter] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [departureLocation, setDepartureLocation] = useState("");
+  const [airportMode, setAirportMode] = useState("browse"); // browse | manual
+  const [arrivalAirport, setArrivalAirport] = useState(null);
+  const [manualAirportName, setManualAirportName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [prefs, setPrefs] = useState({
@@ -76,15 +80,20 @@ export default function StepDestination() {
   }
 
   function handleContinue() {
-    dispatch({ type: "SET_DESTINATION", destination: selected, departureLocation });
+    const arrivalAirportPayload = airportMode === "browse"
+      ? arrivalAirport
+      : (manualAirportName.trim() ? { name: manualAirportName.trim() } : null);
+    dispatch({ type: "SET_DESTINATION", destination: selected, arrivalAirport: arrivalAirportPayload });
   }
 
   if (selected) {
+    const canContinue = airportMode === "browse" ? Boolean(arrivalAirport) : Boolean(manualAirportName.trim());
     return (
       <div>
-        <h2 className="wizard-step__title">Where are you departing from?</h2>
+        <h2 className="wizard-step__title">Which airport are you landing at?</h2>
         <p className="wizard-step__subtitle">
-          Heading to <strong>{selected.name}, {selected.country}</strong>. Let us know your starting point.
+          Heading to <strong>{selected.name}, {selected.country}</strong>. We'll use this to calculate your transfer
+          to the hotel.
         </p>
         {selected.hasCuratedItinerary === false && (
           <div className="error-banner" style={{ background: "rgba(99,102,241,0.1)", borderColor: "rgba(99,102,241,0.3)", color: "#c7d2fe" }}>
@@ -92,20 +101,53 @@ export default function StepDestination() {
             options and a trip schedule, with attraction recommendations coming in a future update.
           </div>
         )}
-        <div className="form-group">
-          <label>Departure location</label>
-          <input
-            type="text"
-            placeholder="e.g. New York, USA"
-            value={departureLocation}
-            onChange={(e) => setDepartureLocation(e.target.value)}
-          />
+
+        <div className="option-grid" style={{ marginBottom: "1.5rem" }}>
+          <button
+            className={`option-card ${airportMode === "browse" ? "is-selected" : ""}`}
+            type="button"
+            onClick={() => setAirportMode("browse")}
+          >
+            <span className="option-card__icon">
+              <ListChecks size={22} />
+            </span>
+            <span className="option-card__label">Choose from nearby airports</span>
+          </button>
+          <button
+            className={`option-card ${airportMode === "manual" ? "is-selected" : ""}`}
+            type="button"
+            onClick={() => setAirportMode("manual")}
+          >
+            <span className="option-card__icon">
+              <PenLine size={22} />
+            </span>
+            <span className="option-card__label">Enter manually</span>
+          </button>
         </div>
+
+        {airportMode === "browse" ? (
+          <AirportSelect
+            destination={selected}
+            selectedAirportCode={arrivalAirport?.iataCode}
+            onSelect={setArrivalAirport}
+          />
+        ) : (
+          <div className="form-group">
+            <label>Airport name</label>
+            <input
+              type="text"
+              placeholder="e.g. John F. Kennedy International Airport"
+              value={manualAirportName}
+              onChange={(e) => setManualAirportName(e.target.value)}
+            />
+          </div>
+        )}
+
         <div className="wizard-step__actions">
           <button className="btn btn-secondary" onClick={() => setSelected(null)}>
             <ArrowLeft size={16} /> Choose a different destination
           </button>
-          <button className="btn btn-primary" disabled={!departureLocation.trim()} onClick={handleContinue}>
+          <button className="btn btn-primary" disabled={!canContinue} onClick={handleContinue}>
             Continue
           </button>
         </div>
@@ -149,12 +191,7 @@ export default function StepDestination() {
         <p className="wizard-step__subtitle">Search any city worldwide, optionally narrowed down by country.</p>
         <div className="form-group">
           <label>Country <span className="hint">(optional filter)</span></label>
-          <select value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)}>
-            <option value="">Any country</option>
-            {COUNTRIES.map((c) => (
-              <option key={c.code} value={c.code}>{c.name}</option>
-            ))}
-          </select>
+          <CountrySelect value={countryFilter} onChange={setCountryFilter} countries={COUNTRIES} />
         </div>
         <div className="form-group">
           <label>City</label>
