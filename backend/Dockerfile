@@ -5,7 +5,7 @@ RUN mvn -q dependency:go-offline
 COPY backend/src ./src
 RUN mvn -q package -DskipTests
 
-FROM eclipse-temurin:8-jre
+FROM eclipse-temurin:17-jre
 WORKDIR /app
 COPY --from=build /app/target/vacation-planner-backend.jar app.jar
 EXPOSE 8080
