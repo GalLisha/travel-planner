@@ -14,6 +14,7 @@ public class Attraction {
     private String openingHours;
     private BudgetLevel estimatedCost;
     private String imageUrl;
+    private boolean aiSourced;
 
     public Attraction() {
     }
@@ -152,5 +153,13 @@ public class Attraction {
 
     public void setImageUrl(String imageUrl) {
         this.imageUrl = imageUrl;
+    }
+
+    public boolean isAiSourced() {
+        return aiSourced;
+    }
+
+    public void setAiSourced(boolean aiSourced) {
+        this.aiSourced = aiSourced;
     }
 }

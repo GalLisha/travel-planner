@@ -439,6 +439,7 @@ h1, h2, h3 {
 input[type="text"],
 input[type="number"],
 input[type="date"],
+input[type="time"],
 select,
 textarea {
   background-color: var(--bg-input);
@@ -616,6 +617,13 @@ select {
   border-radius: 999px;
   text-transform: uppercase;
   letter-spacing: 0.02em;
+}
+
+.tag--ai {
+  background-color: rgba(245, 158, 11, 0.14);
+  color: var(--color-warning);
+  display: inline-block;
+  margin-bottom: 0.3rem;
 }
 
 .search-box {

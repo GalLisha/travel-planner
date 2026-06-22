@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
@@ -11,7 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /**
- * Minimal blocking HTTP GET client built on {@link HttpURLConnection} - deliberately
+ * Minimal blocking HTTP GET/POST client built on {@link HttpURLConnection} - deliberately
  * avoids java.net.http.HttpClient (Java 11+) so the backend keeps compiling on Java 8.
  */
 public final class SimpleHttpClient {
@@ -27,6 +28,34 @@ public final class SimpleHttpClient {
         connection.setReadTimeout(readTimeoutMs);
         for (Map.Entry<String, String> header : headers.entrySet()) {
             connection.setRequestProperty(header.getKey(), header.getValue());
+        }
+
+        int status = connection.getResponseCode();
+        InputStream stream = (status >= 200 && status < 300) ? connection.getInputStream() : connection.getErrorStream();
+        String body = readAll(stream);
+
+        if (status < 200 || status >= 300) {
+            throw new IOException("HTTP " + status + " from " + url + ": " + body);
+        }
+        return body;
+    }
+
+    public static String postJson(String url, Map<String, String> headers, String jsonBody,
+                                   int connectTimeoutMs, int readTimeoutMs) throws IOException {
+        HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
+        connection.setRequestMethod("POST");
+        connection.setDoOutput(true);
+        connection.setConnectTimeout(connectTimeoutMs);
+        connection.setReadTimeout(readTimeoutMs);
+        connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+        for (Map.Entry<String, String> header : headers.entrySet()) {
+            connection.setRequestProperty(header.getKey(), header.getValue());
+        }
+
+        byte[] payload = jsonBody.getBytes(StandardCharsets.UTF_8);
+        connection.setFixedLengthStreamingMode(payload.length);
+        try (OutputStream out = connection.getOutputStream()) {
+            out.write(payload);
         }
 
         int status = connection.getResponseCode();

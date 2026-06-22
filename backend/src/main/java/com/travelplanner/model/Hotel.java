@@ -11,6 +11,7 @@ public class Hotel {
     private String imageUrl;
     private String address;
     private GeoPoint location;
+    private boolean aiSourced;
 
     public Hotel() {
     }
@@ -93,5 +94,13 @@ public class Hotel {
 
     public void setLocation(GeoPoint location) {
         this.location = location;
+    }
+
+    public boolean isAiSourced() {
+        return aiSourced;
+    }
+
+    public void setAiSourced(boolean aiSourced) {
+        this.aiSourced = aiSourced;
     }
 }

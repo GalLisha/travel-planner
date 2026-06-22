@@ -14,6 +14,7 @@ public class HotelDto {
     private String address;
     private double latitude;
     private double longitude;
+    private boolean aiSourced;
 
     public static HotelDto fromModel(Hotel hotel) {
         HotelDto dto = new HotelDto();
@@ -28,6 +29,7 @@ public class HotelDto {
         dto.address = hotel.getAddress();
         dto.latitude = hotel.getLocation() != null ? hotel.getLocation().getLatitude() : 0;
         dto.longitude = hotel.getLocation() != null ? hotel.getLocation().getLongitude() : 0;
+        dto.aiSourced = hotel.isAiSourced();
         return dto;
     }
 
@@ -73,5 +75,9 @@ public class HotelDto {
 
     public double getLongitude() {
         return longitude;
+    }
+
+    public boolean isAiSourced() {
+        return aiSourced;
     }
 }

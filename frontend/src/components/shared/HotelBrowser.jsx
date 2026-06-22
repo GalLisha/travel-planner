@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Star, MapPinned, Building2, AlertCircle, RotateCw, ChevronLeft, ChevronRight } from "lucide-react";
 import { searchHotels } from "../../api/api.js";
 
-const HOTELS_PER_PAGE = 10;
+const HOTELS_PER_PAGE = 6;
 
 function StarRating({ rating }) {
   if (!rating) return null;
@@ -89,6 +89,7 @@ export default function HotelBrowser({ destination, selectedHotelId, onSelect })
             </div>
             <div className="hotel-card__body">
               <div className="hotel-card__name">{hotel.name}</div>
+              {hotel.aiSourced && <span className="tag tag--ai">AI-suggested &middot; unverified</span>}
               <StarRating rating={hotel.starRating} />
               <div className="hotel-card__meta">
                 {hotel.minPricePerNight ? (
@@ -96,9 +97,11 @@ export default function HotelBrowser({ destination, selectedHotelId, onSelect })
                     ${hotel.minPricePerNight}&ndash;${hotel.maxPricePerNight}/night
                   </span>
                 ) : null}
-                <span>
-                  <MapPinned size={13} /> {hotel.distanceFromCenterKm} km from center
-                </span>
+                {!hotel.aiSourced && (
+                  <span>
+                    <MapPinned size={13} /> {hotel.distanceFromCenterKm} km from center
+                  </span>
+                )}
               </div>
             </div>
           </button>

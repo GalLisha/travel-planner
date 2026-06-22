@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * Real {@link HotelService} backed by the Google Places API "Nearby Search" endpoint
@@ -19,8 +20,10 @@ import java.util.Map;
 public class GooglePlacesHotelService implements HotelService {
 
     private static final String NEARBY_SEARCH_URL = "https://maps.googleapis.com/maps/api/place/nearbysearch/json";
+    private static final String FIND_PLACE_URL = "https://maps.googleapis.com/maps/api/place/findplacefromtext/json";
     private static final String PHOTO_URL = "https://maps.googleapis.com/maps/api/place/photo";
     private static final int SEARCH_RADIUS_METERS = 5000;
+    private static final int LOOKUP_BIAS_RADIUS_METERS = 50000;
     private static final double EARTH_RADIUS_KM = 6371.0;
 
     private final String apiKey;
@@ -35,6 +38,7 @@ public class GooglePlacesHotelService implements HotelService {
                 + "?location=" + query.getLatitude() + "," + query.getLongitude()
                 + "&radius=" + SEARCH_RADIUS_METERS
                 + "&type=lodging"
+                + "&language=en"
                 + "&key=" + SimpleHttpClient.encode(apiKey);
 
         try {
@@ -79,6 +83,44 @@ public class GooglePlacesHotelService implements HotelService {
         return hotel;
     }
 
+    @Override
+    public Optional<Hotel> lookupByName(String name, HotelSearchQuery query) {
+        String input = name + ", " + query.getCityName();
+        String url = FIND_PLACE_URL
+                + "?input=" + SimpleHttpClient.encode(input)
+                + "&inputtype=textquery"
+                + "&fields=place_id,name,formatted_address,geometry,rating"
+                + "&locationbias=circle:" + LOOKUP_BIAS_RADIUS_METERS + "@" + query.getLatitude() + "," + query.getLongitude()
+                + "&language=en"
+                + "&key=" + SimpleHttpClient.encode(apiKey);
+
+        try {
+            Map<String, String> headers = new LinkedHashMap<>();
+            String json = SimpleHttpClient.getJson(url, headers, 5000, 8000);
+            FindPlaceResponse response = JsonUtil.GSON.fromJson(json, FindPlaceResponse.class);
+            if (response.candidates == null || response.candidates.length == 0) {
+                return Optional.empty();
+            }
+            return Optional.of(toHotel(response.candidates[0], query));
+        } catch (IOException e) {
+            throw new RuntimeException("Hotel lookup is temporarily unavailable: " + e.getMessage(), e);
+        }
+    }
+
+    private Hotel toHotel(Candidate candidate, HotelSearchQuery query) {
+        Hotel hotel = new Hotel();
+        hotel.setId(candidate.place_id);
+        hotel.setName(candidate.name);
+        hotel.setStarRating(candidate.rating);
+        hotel.setAddress(candidate.formatted_address);
+
+        double lat = candidate.geometry != null && candidate.geometry.location != null ? candidate.geometry.location.lat : query.getLatitude();
+        double lon = candidate.geometry != null && candidate.geometry.location != null ? candidate.geometry.location.lng : query.getLongitude();
+        hotel.setLocation(new GeoPoint(lat, lon));
+        hotel.setDistanceFromCenterKm(distanceKm(query.getLatitude(), query.getLongitude(), lat, lon));
+        return hotel;
+    }
+
     private static double[] priceLevelToRange(Integer priceLevel) {
         if (priceLevel == null) {
             return new double[]{0, 0};
@@ -103,6 +145,18 @@ public class GooglePlacesHotelService implements HotelService {
 
     private static class PlacesResponse {
         PlaceResult[] results;
+    }
+
+    private static class FindPlaceResponse {
+        Candidate[] candidates;
+    }
+
+    private static class Candidate {
+        String place_id;
+        String name;
+        String formatted_address;
+        Double rating;
+        Geometry geometry;
     }
 
     private static class PlaceResult {

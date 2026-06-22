@@ -23,6 +23,9 @@ import com.travelplanner.service.DestinationRecommendationService;
 import com.travelplanner.service.ItineraryService;
 import com.travelplanner.service.RouteOptimizationService;
 import com.travelplanner.service.TripService;
+import com.travelplanner.service.ai.AiService;
+import com.travelplanner.service.ai.GeminiAiService;
+import com.travelplanner.service.ai.NullAiService;
 import com.travelplanner.service.airport.AirportService;
 import com.travelplanner.service.airport.OverpassAirportService;
 import com.travelplanner.service.booking.FlightBookingService;
@@ -54,12 +57,22 @@ public final class Main {
         AttractionRepository attractionRepository = new AttractionRepository();
         ItineraryRepository itineraryRepository = new ItineraryRepository();
 
+        // AI features (hotel-search fallback, hotel-name validation as a last resort,
+        // personalized attraction recommendations) are entirely optional - disabled out of
+        // the box, enabled by setting GEMINI_API_KEY. Every caller holds a non-null AiService
+        // and never needs to null-check; NullAiService simply returns nothing, which every
+        // call site already treats as "AI found nothing new".
+        String geminiApiKey = System.getenv("GEMINI_API_KEY");
+        AiService aiService = (geminiApiKey != null && !geminiApiKey.trim().isEmpty())
+                ? new GeminiAiService(geminiApiKey.trim())
+                : new NullAiService();
+
         // Services (business logic layer)
         RouteOptimizationService routeOptimizationService = new RouteOptimizationService();
         DestinationRecommendationService recommendationService =
                 new DestinationRecommendationService(destinationRepository);
         ItineraryService itineraryService = new ItineraryService(
-                destinationRepository, attractionRepository, itineraryRepository, routeOptimizationService);
+                destinationRepository, attractionRepository, itineraryRepository, routeOptimizationService, aiService);
 
         // Booking services are stubs today; swapping these two lines for real
         // implementations is the only change needed to enable booking later.
@@ -89,7 +102,7 @@ public final class Main {
         new ItineraryController(itineraryService).registerRoutes(router);
         new BookingController(flightBookingService, hotelBookingService).registerRoutes(router);
         new CityController(cityService, destinationRepository).registerRoutes(router);
-        new HotelController(hotelService).registerRoutes(router);
+        new HotelController(hotelService, aiService).registerRoutes(router);
         new AirportController(airportService).registerRoutes(router);
 
         // User accounts + saved trips: only enabled when a MongoDB connection string is
@@ -123,6 +136,7 @@ public final class Main {
 
         System.out.println("Vacation Planner backend listening on http://localhost:" + port);
         System.out.println("Hotel provider: " + (hotelService instanceof GooglePlacesHotelService ? "Google Places (live)" : "OpenStreetMap/Overpass (live)"));
+        System.out.println("AI features: " + (aiService.isEnabled() ? "enabled (Gemini)" : "disabled (no GEMINI_API_KEY configured)"));
     }
 
     private static int resolvePort() {

@@ -68,7 +68,7 @@ public class OverpassAirportService implements AirportService {
         double lon = element.lon != null ? element.lon : (element.center != null ? element.center.lon : cityLon);
 
         Airport airport = new Airport();
-        airport.setName(tags.get("name"));
+        airport.setName(tags.get("name:en") != null ? tags.get("name:en") : tags.get("name"));
         airport.setIataCode(tags.get("iata"));
         airport.setLocation(new GeoPoint(lat, lon));
         airport.setDistanceFromCityCenterKm(distanceKm(cityLat, cityLon, lat, lon));

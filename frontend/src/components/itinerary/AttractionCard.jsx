@@ -22,12 +22,17 @@ export default function AttractionCard({ item, onReplace }) {
         </div>
         <div className="attraction-card__meta">
           <span className="tag">{label(attraction.category)}</span>
-          <span>
-            <Clock size={13} /> {attraction.openingHours}
-          </span>
-          <span>
-            <DollarSign size={13} /> {label(attraction.estimatedCost)}
-          </span>
+          {attraction.aiSourced && <span className="tag tag--ai">AI recommended</span>}
+          {attraction.openingHours && (
+            <span>
+              <Clock size={13} /> {attraction.openingHours}
+            </span>
+          )}
+          {attraction.estimatedCost && (
+            <span>
+              <DollarSign size={13} /> {label(attraction.estimatedCost)}
+            </span>
+          )}
         </div>
       </div>
     </div>

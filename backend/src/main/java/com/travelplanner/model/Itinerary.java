@@ -6,6 +6,8 @@ import java.util.List;
 public class Itinerary {
     private String id;
     private String destinationId;
+    private String destinationName;
+    private String destinationCountry;
     private TravelGroupType travelGroupType;
     private String departureDate;
     private String returnDate;
@@ -31,6 +33,22 @@ public class Itinerary {
 
     public void setDestinationId(String destinationId) {
         this.destinationId = destinationId;
+    }
+
+    public String getDestinationName() {
+        return destinationName;
+    }
+
+    public void setDestinationName(String destinationName) {
+        this.destinationName = destinationName;
+    }
+
+    public String getDestinationCountry() {
+        return destinationCountry;
+    }
+
+    public void setDestinationCountry(String destinationCountry) {
+        this.destinationCountry = destinationCountry;
     }
 
     public TravelGroupType getTravelGroupType() {

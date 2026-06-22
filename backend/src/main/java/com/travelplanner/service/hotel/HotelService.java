@@ -3,6 +3,7 @@ package com.travelplanner.service.hotel;
 import com.travelplanner.model.Hotel;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Abstraction over a hotel search provider. {@link OverpassHotelService} is the
@@ -13,4 +14,11 @@ import java.util.List;
  */
 public interface HotelService {
     List<Hotel> searchHotels(HotelSearchQuery query);
+
+    /**
+     * Resolves a free-text hotel name (as typed by a user in the manual-entry flow)
+     * to a real place near the given query location, so the address/coordinates can
+     * be verified rather than trusted blindly. Empty when no matching place is found.
+     */
+    Optional<Hotel> lookupByName(String name, HotelSearchQuery query);
 }

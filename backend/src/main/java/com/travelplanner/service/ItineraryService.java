@@ -6,6 +6,7 @@ import com.travelplanner.exception.BadRequestException;
 import com.travelplanner.exception.NotFoundException;
 import com.travelplanner.model.ActivityTag;
 import com.travelplanner.model.Attraction;
+import com.travelplanner.model.BudgetLevel;
 import com.travelplanner.model.Destination;
 import com.travelplanner.model.GeoPoint;
 import com.travelplanner.model.Itinerary;
@@ -16,6 +17,8 @@ import com.travelplanner.model.TravelGroupType;
 import com.travelplanner.repository.AttractionRepository;
 import com.travelplanner.repository.DestinationRepository;
 import com.travelplanner.repository.ItineraryRepository;
+import com.travelplanner.service.ai.AiAttractionSuggestion;
+import com.travelplanner.service.ai.AiService;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -45,19 +48,26 @@ public class ItineraryService {
     private static final int DEPARTURE_DAY_END_MINUTES = 13 * 60;
     private static final int MAX_ITEMS_PER_DAY = 4;
 
+    private static final double MAX_ATTRACTION_DISTANCE_FROM_CENTER_KM = 50.0;
+    private static final int AI_ATTRACTION_SUGGESTION_COUNT = 8;
+    private static final int DEFAULT_AI_ATTRACTION_VISIT_MINUTES = 90;
+
     private final DestinationRepository destinationRepository;
     private final AttractionRepository attractionRepository;
     private final ItineraryRepository itineraryRepository;
     private final RouteOptimizationService routeOptimizationService;
+    private final AiService aiService;
 
     public ItineraryService(DestinationRepository destinationRepository,
                              AttractionRepository attractionRepository,
                              ItineraryRepository itineraryRepository,
-                             RouteOptimizationService routeOptimizationService) {
+                             RouteOptimizationService routeOptimizationService,
+                             AiService aiService) {
         this.destinationRepository = destinationRepository;
         this.attractionRepository = attractionRepository;
         this.itineraryRepository = itineraryRepository;
         this.routeOptimizationService = routeOptimizationService;
+        this.aiService = aiService;
     }
 
     public Itinerary generateItinerary(GenerateItineraryRequestDto request) {
@@ -78,10 +88,10 @@ public class ItineraryService {
                 ? new GeoPoint(request.getHotelLatitude(), request.getHotelLongitude())
                 : destination.getLocation();
 
-        // Attractions only exist for the curated catalog; a real city found via city
-        // search that isn't one of those 10 destinations simply yields an empty pool,
-        // which naturally produces a trip of "free days" below rather than failing.
-        List<Attraction> pool = rankedAttractionsFor(destination.getId(), groupType);
+        // Curated attractions exist for only 10 destinations; for everything else (and to
+        // personalize even curated ones) the AI service - when configured - supplements
+        // the pool with attractions tailored to the chosen travel group type.
+        List<Attraction> pool = rankedAttractionsFor(destination, groupType);
 
         // Real flight times + an arrival airport let day 1/the last day be anchored to the
         // actual flight schedule (plus a calculated transfer leg) instead of the generic
@@ -121,6 +131,8 @@ public class ItineraryService {
         Itinerary itinerary = new Itinerary();
         itinerary.setId(UUID.randomUUID().toString());
         itinerary.setDestinationId(destination.getId());
+        itinerary.setDestinationName(destination.getName());
+        itinerary.setDestinationCountry(destination.getCountry());
         itinerary.setTravelGroupType(groupType);
         itinerary.setDepartureDate(request.getDepartureDate());
         itinerary.setReturnDate(request.getReturnDate());
@@ -236,7 +248,8 @@ public class ItineraryService {
         Attraction current = attractionRepository.findById(attractionId);
         Set<String> usedElsewhere = usedAttractionIds(itinerary, dayNumber);
 
-        List<Attraction> candidates = rankedAttractionsFor(itinerary.getDestinationId(), itinerary.getTravelGroupType());
+        Destination destination = destinationForAlternatives(itinerary);
+        List<Attraction> candidates = rankedAttractionsFor(destination, itinerary.getTravelGroupType());
         candidates.removeIf(a -> usedElsewhere.contains(a.getId()) || a.getId().equals(attractionId));
 
         if (current != null) {
@@ -349,14 +362,114 @@ public class ItineraryService {
         return day;
     }
 
-    /** Attractions suited to the travel group, ranked by relevance to that group's typical interests. */
-    private List<Attraction> rankedAttractionsFor(String destinationId, TravelGroupType groupType) {
-        List<Attraction> attractions = new ArrayList<>(attractionRepository.findByDestination(destinationId));
+    /** Attractions suited to the travel group, ranked by relevance to that group's typical interests.
+     * When the AI service is configured, the curated catalog is supplemented with attractions the AI
+     * recommends specifically for this destination + travel group, so personalization isn't limited
+     * to the 10 curated destinations. */
+    private List<Attraction> rankedAttractionsFor(Destination destination, TravelGroupType groupType) {
+        List<Attraction> attractions = new ArrayList<>(attractionRepository.findByDestination(destination.getId()));
         attractions.removeIf(a -> !a.isSuitableFor(groupType));
+        if (aiService.isEnabled()) {
+            // The AI has no knowledge of the curated catalog, so it can (and does) suggest
+            // something already in it - e.g. "Disneyland Paris" again - which would otherwise
+            // get scheduled twice. Dedupe by normalized name against what's already in the pool.
+            Set<String> existingNames = new HashSet<>();
+            for (Attraction a : attractions) {
+                existingNames.add(normalizedName(a.getName()));
+            }
+            for (Attraction ai : aiSupplementAttractions(destination, groupType)) {
+                if (existingNames.add(normalizedName(ai.getName()))) {
+                    attractions.add(ai);
+                }
+            }
+        }
         Map<ActivityTag, Integer> weights = categoryWeights(groupType);
         attractions.sort(Comparator.comparingInt(
                 (Attraction a) -> weights.getOrDefault(a.getCategory(), 0)).reversed());
         return attractions;
+    }
+
+    /** Resolves the destination context needed to ask the AI for alternatives. Curated destinations
+     * are looked up directly; non-curated ones (a real city found via city search) only persisted
+     * their name/country/hotel location on the {@link Itinerary} itself, so a lightweight stand-in
+     * is built from that instead of failing. */
+    private Destination destinationForAlternatives(Itinerary itinerary) {
+        java.util.Optional<Destination> curated = destinationRepository.findById(itinerary.getDestinationId());
+        if (curated.isPresent()) {
+            return curated.get();
+        }
+        Destination virtual = new Destination();
+        virtual.setId(itinerary.getDestinationId());
+        virtual.setName(itinerary.getDestinationName());
+        virtual.setCountry(itinerary.getDestinationCountry());
+        virtual.setLocation(itinerary.getHotelLocation());
+        return virtual;
+    }
+
+    /** Asks the AI for attractions tailored to this destination + travel group, discarding any
+     * suggestion whose own coordinates land implausibly far from the destination - a sanity check
+     * on the AI's data, not an independent geocoding pass. Never throws: any failure (timeout,
+     * malformed response, all suggestions rejected) simply yields no supplemental attractions. */
+    private List<Attraction> aiSupplementAttractions(Destination destination, TravelGroupType groupType) {
+        try {
+            List<AiAttractionSuggestion> suggestions = aiService.suggestAttractions(
+                    destination.getName(), destination.getCountry(), groupType, AI_ATTRACTION_SUGGESTION_COUNT);
+            List<Attraction> result = new ArrayList<>();
+            for (AiAttractionSuggestion suggestion : suggestions) {
+                Attraction attraction = toAttraction(suggestion, destination, groupType);
+                if (attraction != null) {
+                    result.add(attraction);
+                }
+            }
+            return result;
+        } catch (RuntimeException e) {
+            System.err.println("AI attraction supplementation failed: " + e.getMessage());
+            return new ArrayList<>();
+        }
+    }
+
+    private Attraction toAttraction(AiAttractionSuggestion suggestion, Destination destination, TravelGroupType groupType) {
+        if (suggestion.name == null || suggestion.name.trim().isEmpty()
+                || suggestion.latitude == null || suggestion.longitude == null) {
+            return null;
+        }
+        GeoPoint point = new GeoPoint(suggestion.latitude, suggestion.longitude);
+        if (destination.getLocation() != null
+                && routeOptimizationService.distanceKm(destination.getLocation(), point) > MAX_ATTRACTION_DISTANCE_FROM_CENTER_KM) {
+            return null;
+        }
+
+        Attraction attraction = new Attraction();
+        attraction.setId("ai-" + UUID.randomUUID());
+        attraction.setDestinationId(destination.getId());
+        attraction.setName(suggestion.name);
+        attraction.setDescription(suggestion.description != null ? suggestion.description : "");
+        attraction.setCategory(parseCategory(suggestion.category));
+        attraction.setLocation(point);
+        attraction.setAverageVisitDurationMinutes(suggestion.averageVisitDurationMinutes != null
+                ? suggestion.averageVisitDurationMinutes : DEFAULT_AI_ATTRACTION_VISIT_MINUTES);
+        // Suggested specifically for this one group type - not re-asked or guessed for the other two.
+        attraction.setSuitableForFamily(groupType == TravelGroupType.FAMILY);
+        attraction.setSuitableForCouple(groupType == TravelGroupType.COUPLE);
+        attraction.setSuitableForFriends(groupType == TravelGroupType.FRIENDS);
+        attraction.setEstimatedCost(BudgetLevel.MEDIUM);
+        attraction.setAiSourced(true);
+        return attraction;
+    }
+
+    private static String normalizedName(String name) {
+        return name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static ActivityTag parseCategory(String category) {
+        if (category != null) {
+            try {
+                return ActivityTag.valueOf(category.trim().toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException ignored) {
+                // fall through to the default below
+            }
+        }
+        return ActivityTag.LANDMARKS;
     }
 
     private Map<ActivityTag, Integer> categoryWeights(TravelGroupType groupType) {

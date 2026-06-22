@@ -13,6 +13,7 @@ public class AttractionDto {
     private String openingHours;
     private String estimatedCost;
     private String imageUrl;
+    private boolean aiSourced;
 
     public static AttractionDto fromModel(Attraction a) {
         AttractionDto dto = new AttractionDto();
@@ -26,6 +27,7 @@ public class AttractionDto {
         dto.openingHours = a.getOpeningHours();
         dto.estimatedCost = a.getEstimatedCost() != null ? a.getEstimatedCost().name() : null;
         dto.imageUrl = a.getImageUrl();
+        dto.aiSourced = a.isAiSourced();
         return dto;
     }
 
@@ -67,5 +69,9 @@ public class AttractionDto {
 
     public String getImageUrl() {
         return imageUrl;
+    }
+
+    public boolean isAiSourced() {
+        return aiSourced;
     }
 }

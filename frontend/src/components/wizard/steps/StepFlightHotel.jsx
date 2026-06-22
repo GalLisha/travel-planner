@@ -1,7 +1,20 @@
-import React, { useState } from "react";
-import { CheckCircle2, PlaneTakeoff, ArrowLeft, Compass, Info, PenLine, ListChecks, Car, Bus } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  CheckCircle2,
+  PlaneTakeoff,
+  ArrowLeft,
+  Compass,
+  Info,
+  PenLine,
+  ListChecks,
+  Car,
+  Bus,
+  Loader2,
+  AlertCircle,
+} from "lucide-react";
 import { useWizardDispatch, useWizardState } from "../../../context/WizardContext.jsx";
-import { generateItinerary } from "../../../api/api.js";
+import { generateItinerary, lookupHotel } from "../../../api/api.js";
+import { useDebouncedValue } from "../../../utils/useDebouncedValue.js";
 import HotelBrowser from "../../shared/HotelBrowser.jsx";
 
 export default function StepFlightHotel() {
@@ -12,8 +25,50 @@ export default function StepFlightHotel() {
   const [dates, setDates] = useState({ departureDate: "", returnDate: "", arrivalTime: "", departureTime: "" });
   const [hotelMode, setHotelMode] = useState("browse"); // browse | manual
   const [selectedHotel, setSelectedHotel] = useState(null);
-  const [manualHotel, setManualHotel] = useState({ hotelName: "", hotelAddress: "" });
+  const [manualHotel, setManualHotel] = useState({ hotelName: "", hotelAddress: "", hotelLatitude: null, hotelLongitude: null });
+  const [hotelLookup, setHotelLookup] = useState({ status: "idle", message: "", verifiedName: "", matchSource: null });
   const [transferMode, setTransferMode] = useState(null); // TAXI | BUS
+  const debouncedHotelName = useDebouncedValue(manualHotel.hotelName, 600);
+  const lookupAbortRef = useRef(null);
+
+  useEffect(() => {
+    if (hotelMode !== "manual") return;
+    const trimmed = debouncedHotelName.trim();
+    if (trimmed.length < 3) {
+      setHotelLookup({ status: "idle", message: "", verifiedName: "", matchSource: null });
+      return;
+    }
+
+    if (lookupAbortRef.current) lookupAbortRef.current.abort();
+    const controller = new AbortController();
+    lookupAbortRef.current = controller;
+
+    setHotelLookup({ status: "checking", message: "", verifiedName: "", matchSource: null });
+    lookupHotel(
+      { name: trimmed, city: destination.name, country: destination.country, lat: destination.latitude, lon: destination.longitude },
+      controller.signal
+    )
+      .then((result) => {
+        if (result.found) {
+          setHotelLookup({ status: "found", message: "", verifiedName: trimmed, matchSource: result.matchSource });
+          setManualHotel((prev) => ({
+            ...prev,
+            hotelAddress: result.hotel.address || prev.hotelAddress,
+            hotelLatitude: result.hotel.latitude,
+            hotelLongitude: result.hotel.longitude,
+          }));
+        } else {
+          setHotelLookup({ status: "not-found", message: result.message, verifiedName: "", matchSource: null });
+        }
+      })
+      .catch((err) => {
+        if (err.name === "AbortError") return;
+        setHotelLookup({ status: "not-found", message: err.message, verifiedName: "", matchSource: null });
+      });
+
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [debouncedHotelName, hotelMode, destination.name, destination.country, destination.latitude, destination.longitude]);
 
   function answer(value) {
     setHasBooking(value);
@@ -38,8 +93,8 @@ export default function StepFlightHotel() {
         returnDate: dates.returnDate,
         hotelName,
         hotelAddress,
-        hotelLatitude: hotelMode === "browse" ? selectedHotel?.latitude : null,
-        hotelLongitude: hotelMode === "browse" ? selectedHotel?.longitude : null,
+        hotelLatitude: hotelMode === "browse" ? selectedHotel?.latitude : manualHotel.hotelLatitude,
+        hotelLongitude: hotelMode === "browse" ? selectedHotel?.longitude : manualHotel.hotelLongitude,
         cityName: destination.name,
         countryName: destination.country,
         latitude: destination.latitude,
@@ -147,7 +202,10 @@ export default function StepFlightHotel() {
   }
 
   if (phase === "hotel") {
-    const canContinueToTransfer = hotelMode === "browse" ? Boolean(selectedHotel) : Boolean(manualHotel.hotelName.trim());
+    const canContinueToTransfer =
+      hotelMode === "browse"
+        ? Boolean(selectedHotel)
+        : hotelLookup.status === "found" && hotelLookup.verifiedName === manualHotel.hotelName.trim();
 
     return (
       <div>
@@ -197,8 +255,32 @@ export default function StepFlightHotel() {
                 onChange={(e) => setManualHotel({ ...manualHotel, hotelName: e.target.value })}
               />
             </div>
+            {hotelLookup.status === "checking" && (
+              <p className="wizard-step__subtitle">
+                <Loader2 size={14} className="spin-icon" /> Checking that this hotel exists...
+              </p>
+            )}
+            {hotelLookup.status === "found" &&
+              hotelLookup.verifiedName === manualHotel.hotelName.trim() &&
+              hotelLookup.matchSource === "AI" && (
+                <p className="wizard-step__subtitle">
+                  <AlertCircle size={14} /> Found via AI &mdash; please double-check this address, it isn't independently verified.
+                </p>
+              )}
+            {hotelLookup.status === "found" &&
+              hotelLookup.verifiedName === manualHotel.hotelName.trim() &&
+              hotelLookup.matchSource !== "AI" && (
+                <p className="wizard-step__subtitle">
+                  <CheckCircle2 size={14} /> Found it near {destination.name} &mdash; address filled in below.
+                </p>
+              )}
+            {hotelLookup.status === "not-found" && (
+              <div className="error-banner">
+                <AlertCircle size={16} /> {hotelLookup.message}
+              </div>
+            )}
             <div className="form-group">
-              <label>Hotel address <span className="hint">(optional)</span></label>
+              <label>Hotel address</label>
               <input
                 type="text"
                 placeholder="Street, city"

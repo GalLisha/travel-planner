@@ -69,6 +69,22 @@ export function searchHotels({ city, country, lat, lon }, signal) {
   return request(`/hotels/search?${params.toString()}`, { signal });
 }
 
+// Resolves a manually-typed hotel name to a real place, so a "not found" result can be
+// shown as a friendly message instead of throwing like other request() calls do.
+export async function lookupHotel({ name, city, country, lat, lon }, signal) {
+  const params = new URLSearchParams({ name, city, country: country || "", lat, lon });
+  const response = await fetch(`${BASE_URL}/hotels/lookup?${params.toString()}`, { signal });
+  const body = await response.json().catch(() => null);
+
+  if (response.status === 404) {
+    return { found: false, message: body?.message || "We couldn't find that hotel." };
+  }
+  if (!response.ok) {
+    throw new Error(body?.message || `Request failed with status ${response.status}`);
+  }
+  return { found: true, hotel: body, matchSource: body?.matchSource };
+}
+
 export function searchAirports(lat, lon, signal) {
   const params = new URLSearchParams({ lat, lon });
   return request(`/airports/search?${params.toString()}`, { signal });
